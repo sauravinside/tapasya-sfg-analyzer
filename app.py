@@ -383,6 +383,39 @@ with tab_student:
             k4.metric("Avg Score (When Present)", f"{active_avg_display:.2f}")
             
             st.divider()
+
+            # ==============================================================================
+            # NEW SECTION: HALL OF RECORDS (Extremes)
+            # ==============================================================================
+            # Filter specifically for Active Attempts to avoid "Lowest Score: 0" from missed tests
+            stu_active = stu_df[stu_df['Attempts'] > 0]
+            
+            if not stu_active.empty:
+                st.subheader("🌟 Hall of Records (Extremes)")
+                st.caption("Statistics based on active attempts only.")
+
+                # ROW 1: Rank & Score Extremes
+                r1c1, r1c2, r1c3, r1c4 = st.columns(4)
+                r1c1.metric("🏆 Best Rank", f"#{int(stu_active['Rank'].min())}")
+                r1c2.metric("📉 Worst Rank", f"#{int(stu_active['Rank'].max())}")
+                r1c3.metric("🚀 Highest Score", f"{stu_active['Score'].max()}")
+                r1c4.metric("🐢 Lowest Score", f"{stu_active['Score'].min()}")
+                
+                # ROW 2: Attempts & Corrections
+                r2c1, r2c2, r2c3, r2c4 = st.columns(4)
+                r2c1.metric("📝 Highest Attempts", f"{int(stu_active['Attempts'].max())}")
+                r2c2.metric("💤 Lowest Attempts", f"{int(stu_active['Attempts'].min())}")
+                r2c3.metric("✅ Highest Correct", f"{int(stu_active['Correct'].max())}")
+                r2c4.metric("⚠️ Lowest Correct", f"{int(stu_active['Correct'].min())}")
+
+                # ROW 3: Negatives
+                r3c1, r3c2, r3c3, r3c4 = st.columns(4)
+                r3c1.metric("❌ Highest Incorrect", f"{int(stu_active['Incorrect'].max())}")
+                r3c2.metric("🛡️ Lowest Incorrect", f"{int(stu_active['Incorrect'].min())}")
+                r3c3.metric("🎯 Best Accuracy", f"{stu_active['Accuracy'].max():.1f}%")
+                r3c4.metric("📉 Worst Accuracy", f"{stu_active['Accuracy'].min():.1f}%")
+
+            st.divider()
             render_predictor(stu_df['Attempts'].mean(), stu_df['Accuracy'].mean(), stu_df['Score'].mean())
             st.divider()
             render_growth_charts(stu_df, df)
