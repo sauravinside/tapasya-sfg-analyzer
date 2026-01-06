@@ -246,6 +246,13 @@ df, logs = load_data()
 # Sidebar
 with st.sidebar:
     st.header("⚙️ Configuration")
+    
+    # --- NEW: REFRESH BUTTON ---
+    if st.button("🔄 Refresh Data"):
+        st.cache_data.clear()
+        st.rerun()
+    # ---------------------------
+
     st.info("Select a specific test in the 'Test Drill-Down' tab to view batch details.")
     with st.expander("System Logs"):
         for log in logs: st.caption(log)
