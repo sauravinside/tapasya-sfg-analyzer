@@ -25,19 +25,34 @@ st.markdown("""
         box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
     }
     .stTabs [data-baseweb="tab-list"] {
-        gap: 24px;
+        gap: 15px;
     }
     .stTabs [data-baseweb="tab"] {
-        height: 50px;
+        height: 55px;
         white-space: pre-wrap;
         background-color: #0E1117;
         border-radius: 4px;
         color: #FAFAFA;
         font-weight: 600;
+        border: 1px solid #262730; /* Default border */
     }
     .stTabs [data-baseweb="tab-highlight"] {
         background-color: #FF4B4B;
     }
+
+    /* --- SPECIAL STYLING FOR 1st TAB (Analyze) to make it POP --- */
+    div[data-baseweb="tab-list"] button:nth-child(1) {
+        border: 2px solid #FF4B4B !important; /* Bright Red Border */
+        background-color: rgba(255, 75, 75, 0.05) !important;
+        font-size: 1.1rem !important; /* Larger text */
+    }
+    
+    /* --- SPECIAL STYLING FOR 2nd TAB (Compare) --- */
+    div[data-baseweb="tab-list"] button:nth-child(2) {
+        border: 2px solid #636EFA !important; /* Bright Blue Border */
+        background-color: rgba(99, 110, 250, 0.05) !important;
+    }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -238,94 +253,16 @@ with st.sidebar:
 # --- MAIN LAYOUT ---
 st.title("📊 Tapasya SFG Rank Analyzer")
 
-tab_dashboard, tab_student, tab_compare, tab_test_drill = st.tabs([
-    "🏆 Overall Dashboard", 
+# --- REORDERED TABS HERE ---
+# 1. Analyze (Default), 2. Compare, 3. Dashboard, 4. Drill-Down
+tab_student, tab_compare, tab_dashboard, tab_test_drill = st.tabs([
     "🔍 Analyze my Performance", 
     "⚔️ Compare Students",
+    "🏆 Overall Dashboard", 
     "📅 Test Drill-Down"
 ])
 
-# --- TAB 1: OVERALL DASHBOARD ---
-with tab_dashboard:
-    if df.empty:
-        st.warning("No data available.")
-    else:
-        # Calculate Aggregates
-        total_tests_conducted = df['Test_ID'].nunique()
-        active_students = df['Name'].nunique()
-        avg_batch_score = df['Score'].mean()
-        
-        # --- TOP KPI METRICS ---
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Total Tests Conducted", total_tests_conducted)
-        m2.metric("Active Students", active_students)
-        m3.metric("Batch Avg Score", f"{avg_batch_score:.2f}")
-
-        # ==============================================================================
-        # 1. CONSISTENCY CHAMPIONS (Avg of Active Attempts) - IGNORES 0 ATTEMPTS
-        #    (Formerly High Performers, now swapped to Consistency as per request)
-        # ==============================================================================
-        # Filter: Only consider rows where student actually attempted questions
-        active_attempts_df = df[df['Attempts'] > 0].copy()
-        
-        # This DataFrame calculates avg only when present
-        consistency_leaderboard = active_attempts_df.groupby(['Name']).agg({
-            'Score': 'mean',          # Average of ACTIVE tests only
-            'Accuracy': 'mean',
-            'Is_Active_Attempt': 'count' # Count of ACTIVE tests
-        }).reset_index()
-        
-        consistency_leaderboard = consistency_leaderboard.rename(columns={'Is_Active_Attempt': 'Tests Taken', 'Score': 'Avg Score'})
-        consistency_leaderboard = consistency_leaderboard.sort_values('Avg Score', ascending=False)
-        consistency_leaderboard['Rank'] = range(1, len(consistency_leaderboard) + 1)
-        
-        # Metric for Top Performer
-        if not consistency_leaderboard.empty:
-            m4.metric("Top Consistency Avg", f"{consistency_leaderboard['Avg Score'].iloc[0]:.2f}")
-        
-        st.divider()
-
-        st.subheader("Ranks Based on Tests Appeared")
-        st.caption("This ranking is based on the average score of **only the tests the student appeared for**. (Ignores missed tests - measures consistency when present).")
-        
-        st.dataframe(
-            consistency_leaderboard[['Rank', 'Name', 'Avg Score', 'Accuracy', 'Tests Taken']]
-            .style.format({'Avg Score': '{:.2f}', 'Accuracy': '{:.1f}%'})
-            .background_gradient(subset=['Avg Score'], cmap='Greens'),
-            use_container_width=True, hide_index=True
-        )
-
-        st.divider()
-
-        # ==============================================================================
-        # 2. Absolute Rank (Factoring in Tests Missed) - PENALIZES MISSED TESTS
-        #    (Formerly Consistency Champions, now swapped to High Performers)
-        # ==============================================================================
-        st.subheader("🎯 Absolute Rank (Factoring in Tests Missed)")
-        st.caption(f"This ranking calculates average based on **ALL {total_tests_conducted} TESTS** conducted so far. Missing a test counts as 0 (measures absolute performance).")
-
-        # Logic: Sum total score from FULL dataframe (including 0s)
-        perf_abs_df = df.groupby(['Name']).agg({
-            'Score': 'sum',
-            'Is_Active_Attempt': 'sum'
-        }).reset_index()
-        
-        # Divide by TOTAL TESTS CONDUCTED (Constant)
-        perf_abs_df['Performance Avg'] = perf_abs_df['Score'] / total_tests_conducted
-        perf_abs_df['Attendance %'] = (perf_abs_df['Is_Active_Attempt'] / total_tests_conducted) * 100
-        perf_abs_df['Tests Missed'] = total_tests_conducted - perf_abs_df['Is_Active_Attempt']
-        
-        perf_abs_df = perf_abs_df.sort_values('Performance Avg', ascending=False)
-        perf_abs_df['Absolute Rank'] = range(1, len(perf_abs_df) + 1)
-        
-        st.dataframe(
-            perf_abs_df[['Absolute Rank', 'Name', 'Performance Avg', 'Attendance %', 'Tests Missed']]
-            .style.format({'Performance Avg': '{:.2f}', 'Attendance %': '{:.1f}%'})
-            .background_gradient(subset=['Performance Avg'], cmap='Oranges'),
-            use_container_width=True, hide_index=True
-        )
-
-# --- TAB 2: Analyse my Performance ---
+# --- TAB 1: Analyse my Performance (MOVED TO 1ST POSITION) ---
 with tab_student:
     if df.empty:
         st.warning("No data.")
@@ -346,7 +283,6 @@ with tab_student:
         
         if not stu_df.empty:
             # --- 1. Calculate CONSISTENCY RANK (Based on Attempts > 0) ---
-            # (Formerly Performance Rank)
             active_attempts_all = df[df['Attempts'] > 0].copy()
             cons_lb = active_attempts_all.groupby('Name')['Score'].mean().reset_index().sort_values('Score', ascending=False)
             cons_lb['Rank'] = range(1, len(cons_lb) + 1)
@@ -357,7 +293,6 @@ with tab_student:
                 consistency_rank = "N/A (No Attempts)"
 
             # --- 2. Calculate PERFORMANCE RANK (Based on Total Tests) ---
-            # (Formerly Consistency Rank)
             total_tests_conducted = df['Test_ID'].nunique()
             perf_temp = df.groupby('Name')['Score'].sum().reset_index()
             perf_temp['Real_Avg'] = perf_temp['Score'] / total_tests_conducted
@@ -375,7 +310,7 @@ with tab_student:
             active_avg_display = stu_df[stu_df['Attempts'] > 0]['Score'].mean()
             if pd.isna(active_avg_display): active_avg_display = 0.0
 
-            # KPI Row - LABELS SWAPPED HERE
+            # KPI Row
             k1, k2, k3, k4 = st.columns(4)
             k1.metric("Tests Taken", f"{tests_taken_count}/{total_tests_conducted}")
             k2.metric("Performance Rank", f"#{consistency_rank}", help="Rank considering only tests appeared (Active attempts).")
@@ -384,10 +319,7 @@ with tab_student:
             
             st.divider()
 
-            # ==============================================================================
-            # NEW SECTION: HALL OF RECORDS (Extremes)
-            # ==============================================================================
-            # Filter specifically for Active Attempts to avoid "Lowest Score: 0" from missed tests
+            # Hall of Records
             stu_active = stu_df[stu_df['Attempts'] > 0]
             
             if not stu_active.empty:
@@ -420,7 +352,7 @@ with tab_student:
             st.divider()
             render_growth_charts(stu_df, df)
 
-# --- TAB 3: COMPARE ---
+# --- TAB 2: COMPARE (MOVED TO 2ND POSITION) ---
 with tab_compare:
     st.markdown("### ⚔️ Compare Performance")
     if df.empty:
@@ -448,7 +380,77 @@ with tab_compare:
             fig_rank.update_yaxes(autorange="reversed")
             st.plotly_chart(fig_rank, use_container_width=True)
 
-# --- TAB 4: TEST DRILL-DOWN ---
+# --- TAB 3: OVERALL DASHBOARD (MOVED TO 3RD POSITION) ---
+with tab_dashboard:
+    if df.empty:
+        st.warning("No data available.")
+    else:
+        # Calculate Aggregates
+        total_tests_conducted = df['Test_ID'].nunique()
+        active_students = df['Name'].nunique()
+        avg_batch_score = df['Score'].mean()
+        
+        # --- TOP KPI METRICS ---
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Total Tests Conducted", total_tests_conducted)
+        m2.metric("Active Students", active_students)
+        m3.metric("Batch Avg Score", f"{avg_batch_score:.2f}")
+
+        # Consistency Champions
+        active_attempts_df = df[df['Attempts'] > 0].copy()
+        
+        consistency_leaderboard = active_attempts_df.groupby(['Name']).agg({
+            'Score': 'mean',          # Average of ACTIVE tests only
+            'Accuracy': 'mean',
+            'Is_Active_Attempt': 'count' # Count of ACTIVE tests
+        }).reset_index()
+        
+        consistency_leaderboard = consistency_leaderboard.rename(columns={'Is_Active_Attempt': 'Tests Taken', 'Score': 'Avg Score'})
+        consistency_leaderboard = consistency_leaderboard.sort_values('Avg Score', ascending=False)
+        consistency_leaderboard['Rank'] = range(1, len(consistency_leaderboard) + 1)
+        
+        # Metric for Top Performer
+        if not consistency_leaderboard.empty:
+            m4.metric("Top Consistency Avg", f"{consistency_leaderboard['Avg Score'].iloc[0]:.2f}")
+        
+        st.divider()
+
+        st.subheader("Ranks Based on Tests Appeared")
+        st.caption("This ranking is based on the average score of **only the tests the student appeared for**. (Ignores missed tests - measures consistency when present).")
+        
+        st.dataframe(
+            consistency_leaderboard[['Rank', 'Name', 'Avg Score', 'Accuracy', 'Tests Taken']]
+            .style.format({'Avg Score': '{:.2f}', 'Accuracy': '{:.1f}%'})
+            .background_gradient(subset=['Avg Score'], cmap='Greens'),
+            use_container_width=True, hide_index=True
+        )
+
+        st.divider()
+
+        # Absolute Rank
+        st.subheader("🎯 Absolute Rank (Factoring in Tests Missed)")
+        st.caption(f"This ranking calculates average based on **ALL {total_tests_conducted} TESTS** conducted so far. Missing a test counts as 0 (measures absolute performance).")
+
+        perf_abs_df = df.groupby(['Name']).agg({
+            'Score': 'sum',
+            'Is_Active_Attempt': 'sum'
+        }).reset_index()
+        
+        perf_abs_df['Performance Avg'] = perf_abs_df['Score'] / total_tests_conducted
+        perf_abs_df['Attendance %'] = (perf_abs_df['Is_Active_Attempt'] / total_tests_conducted) * 100
+        perf_abs_df['Tests Missed'] = total_tests_conducted - perf_abs_df['Is_Active_Attempt']
+        
+        perf_abs_df = perf_abs_df.sort_values('Performance Avg', ascending=False)
+        perf_abs_df['Absolute Rank'] = range(1, len(perf_abs_df) + 1)
+        
+        st.dataframe(
+            perf_abs_df[['Absolute Rank', 'Name', 'Performance Avg', 'Attendance %', 'Tests Missed']]
+            .style.format({'Performance Avg': '{:.2f}', 'Attendance %': '{:.1f}%'})
+            .background_gradient(subset=['Performance Avg'], cmap='Oranges'),
+            use_container_width=True, hide_index=True
+        )
+
+# --- TAB 4: TEST DRILL-DOWN (REMAINED LAST) ---
 with tab_test_drill:
     if df.empty:
         st.warning("No data.")
