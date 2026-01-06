@@ -8,7 +8,7 @@ import os
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
-    page_title="UPSC Test Analyzer Pro", 
+    page_title="Tapasya SFG Rank Analyzer",
     layout="wide", 
     page_icon="📈",
     initial_sidebar_state="expanded"
@@ -333,7 +333,7 @@ with st.sidebar:
     with st.expander("System Logs"):
         for log in logs: st.caption(log)
 
-st.title(f"📊 UPSC Test Analytics: {selected_option}")
+st.title(f"📊 Tapasya SFG Rank Analyzer: {selected_option}")
 
 # UPDATED TABS ORDER (Personal First)
 tab_personal, tab_compare, tab_batch, tab_student = st.tabs([
