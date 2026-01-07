@@ -30,29 +30,36 @@ st.markdown("""
     .stTabs [data-baseweb="tab"] {
         height: 55px;
         white-space: pre-wrap;
-        background-color: #0E1117;
+        background-color: #0E1117; /* Keeps the tab button dark */
         border-radius: 4px;
-        color: #FAFAFA;
-        font-weight: 600;
-        border: 1px solid #262730; /* Default border */
-    }
-    .stTabs [data-baseweb="tab-highlight"] {
-        background-color: #FF4B4B;
+        color: #FFFFFF !important; /* Default text color is white for readability */
+        font-weight: 700;
+        border: 1px solid #262730;
     }
 
-    /* --- SPECIAL STYLING FOR 1st TAB (Analyze) to make it POP --- */
+    /* --- TAB 1: Analyze (Red Theme) --- */
     div[data-baseweb="tab-list"] button:nth-child(1) {
-        border: 2px solid #FF4B4B !important; /* Bright Red Border */
-        background-color: rgba(255, 75, 75, 0.05) !important;
-        font-size: 1.1rem !important; /* Larger text */
+        border: 2px solid #FF4B4B !important;
+        background-color: #0E1117 !important;
+    }
+    div[data-baseweb="tab-list"] button:nth-child(1) p {
+        color: #FF4B4B !important; /* Forces text to be Red */
+        font-size: 1.1rem !important;
     }
     
-    /* --- SPECIAL STYLING FOR 2nd TAB (Compare) --- */
+    /* --- TAB 2: Compare (Blue Theme) --- */
     div[data-baseweb="tab-list"] button:nth-child(2) {
-        border: 2px solid #636EFA !important; /* Bright Blue Border */
-        background-color: rgba(99, 110, 250, 0.05) !important;
+        border: 2px solid #636EFA !important;
+        background-color: #0E1117 !important;
+    }
+    div[data-baseweb="tab-list"] button:nth-child(2) p {
+        color: #636EFA !important; /* Forces text to be Blue */
     }
 
+    /* Fix for inactive tabs text color */
+    .stTabs [data-baseweb="tab"] p {
+        font-weight: 600;
+    }
 </style>
 """, unsafe_allow_html=True)
 
