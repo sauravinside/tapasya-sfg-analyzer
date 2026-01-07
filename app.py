@@ -39,14 +39,10 @@ def inject_custom_css():
             font-weight: 700;
             border: 1px solid #262730;
         }
-        /* Tab 1: Analyze (Red) */
         div[data-baseweb="tab-list"] button:nth-child(1) { border: 2px solid #FF4B4B !important; }
         div[data-baseweb="tab-list"] button:nth-child(1) p { color: #FF4B4B !important; font-size: 1.1rem !important; }
-        
-        /* Tab 2: Compare (Blue) */
         div[data-baseweb="tab-list"] button:nth-child(2) { border: 2px solid #636EFA !important; }
         div[data-baseweb="tab-list"] button:nth-child(2) p { color: #636EFA !important; }
-        
         .stTabs [data-baseweb="tab"] p { font-weight: 600; }
     </style>
     """, unsafe_allow_html=True)
@@ -71,6 +67,15 @@ def clean_student_name(text):
     text = re.sub(r'\d+', '', text).replace('.', '').replace('\n', ' ')
     return " ".join(text.split()).upper()
 
+def extract_roll_digits(text):
+    """Extracts last 4 digits of roll number for uniqueness."""
+    if not isinstance(text, str): return "0000"
+    match = re.search(r'\d+', text)
+    if match:
+        full_digits = match.group(0)
+        return full_digits[-4:] # Return last 4 digits
+    return "0000"
+
 @st.cache_data
 def load_data():
     all_records = []
@@ -93,35 +98,57 @@ def load_data():
                     
                     for row in table:
                         clean_row = [str(x).replace('\n', ' ').strip() if x else "" for x in row]
+                        
+                        # Basic validity check
                         if not clean_row or "Name" in clean_row[0] or "Sl No" in clean_row[0]: continue
 
                         try:
-                            # Logic to handle different column structures in PDF
+                            # 1. IDENTIFY COLUMNS
+                            # Handle structure where Sl No might be the first column
                             if clean_row[0].isdigit():
                                 raw_name = clean_row[1]
-                                raw_batch_roll = clean_row[2]
-                                data_start_idx = 3
-                                batch = normalize_batch_name(raw_batch_roll)
-                                if batch == "Others" and len(clean_row) > 3:
-                                    batch = normalize_batch_name(clean_row[3])
+                                raw_roll = clean_row[2] # Roll is usually 3rd column
+                                data_search_start = 3 
                             else:
                                 raw_name = clean_row[0]
-                                raw_batch_roll = clean_row[1]
-                                data_start_idx = 2
-                                batch = normalize_batch_name(raw_batch_roll)
+                                raw_roll = clean_row[1]
+                                data_search_start = 2
 
+                            # 2. EXTRACT BATCH (If present)
+                            # We scan columns 2 and 3 for batch patterns (FRC-X)
+                            batch = "Others"
+                            if len(clean_row) > 2:
+                                pot_batch = normalize_batch_name(clean_row[2])
+                                if pot_batch != "Others": batch = pot_batch
+                            if batch == "Others" and len(clean_row) > 3:
+                                pot_batch = normalize_batch_name(clean_row[3])
+                                if pot_batch != "Others": batch = pot_batch
+
+                            # 3. EXTRACT NUMERICS (Correct, Incorrect, Score)
+                            # Scan from the expected data start position onwards
                             numerics = []
-                            for cell in clean_row[data_start_idx:]:
+                            for cell in clean_row[data_search_start:]:
                                 try:
-                                    numerics.append(float(cell))
+                                    val = float(cell)
+                                    # Heuristic: Score/Rank < 500, Roll No > 1000. 
+                                    # Filter out accidental roll number capture in numeric fields
+                                    if val < 500: 
+                                        numerics.append(val)
                                 except: continue
                             
+                            # We need at least Correct(0), Incorrect(1), Score(2)
                             if len(numerics) >= 3:
-                                correct, incorrect, score = numerics[0], numerics[1], numerics[2]
+                                correct = numerics[0]
+                                incorrect = numerics[1]
+                                score = numerics[2]
                                 rank = int(numerics[3]) if len(numerics) >= 4 else 0
-                                name = clean_student_name(raw_name)
                                 
-                                if len(name) < 2: continue
+                                # 4. GENERATE UNIQUE ID (Name + Last 4 Digits)
+                                name_text = clean_student_name(raw_name)
+                                roll_digits = extract_roll_digits(raw_roll)
+                                unique_name = f"{name_text} ({roll_digits})"
+                                
+                                if len(name_text) < 2: continue
                                 if correct > DEFAULT_TOTAL_QUESTIONS + 5: continue
 
                                 test_num = extract_test_number(filename)
@@ -130,7 +157,8 @@ def load_data():
                                 all_records.append({
                                     "Test_ID": test_clean_name,
                                     "Test_Number": test_num,
-                                    "Name": name,
+                                    "Name": unique_name, # USING UNIQUE ID HERE
+                                    "Raw_Name": name_text,
                                     "Batch": batch,
                                     "Correct": correct,
                                     "Incorrect": incorrect,
@@ -146,9 +174,12 @@ def load_data():
 
     df = pd.DataFrame(all_records)
     if not df.empty:
-        valid_batches = ['FRC-8', 'FRC-9', 'FRC-10']
+        # Filter Logic: Allow FRC batches AND 'Others' (to support Test 21)
+        valid_batches = ['FRC-8', 'FRC-9', 'FRC-10', 'Others']
         df = df[df['Batch'].isin(valid_batches)]
+        
         df = df.sort_values('Test_Number')
+        # Deduplicate based on Test + Unique Name
         df = df.drop_duplicates(subset=['Test_ID', 'Name'], keep='first')
         df['Is_Active_Attempt'] = df['Attempts'].apply(lambda x: 1 if x > 0 else 0)
 
