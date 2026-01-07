@@ -1,12 +1,17 @@
+import os
+import re
+import pandas as pd
 import streamlit as st
 import pdfplumber
-import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import re
-import os
 
-# --- PAGE CONFIGURATION ---
+# --- CONFIGURATION ---
+DATA_FOLDER = 'data'
+DEFAULT_TOTAL_QUESTIONS = 60
+MARKS_CORRECT = 2.0
+MARKS_INCORRECT = 0.66
+
 st.set_page_config(
     page_title="Tapasya SFG Rank Analyzer", 
     layout="wide", 
@@ -14,63 +19,41 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- CUSTOM CSS ---
-st.markdown("""
-<style>
-    .metric-card {
-        background-color: #0E1117;
-        border: 1px solid #262730;
-        border-radius: 5px;
-        padding: 15px;
-        box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
-    }
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 15px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        height: 55px;
-        white-space: pre-wrap;
-        background-color: #0E1117; /* Keeps the tab button dark */
-        border-radius: 4px;
-        color: #FFFFFF !important; /* Default text color is white for readability */
-        font-weight: 700;
-        border: 1px solid #262730;
-    }
+# --- STYLING ---
+def inject_custom_css():
+    st.markdown("""
+    <style>
+        .metric-card {
+            background-color: #0E1117;
+            border: 1px solid #262730;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+        }
+        .stTabs [data-baseweb="tab-list"] { gap: 15px; }
+        .stTabs [data-baseweb="tab"] {
+            height: 55px;
+            background-color: #0E1117;
+            border-radius: 4px;
+            color: #FFFFFF !important;
+            font-weight: 700;
+            border: 1px solid #262730;
+        }
+        /* Tab 1: Analyze (Red) */
+        div[data-baseweb="tab-list"] button:nth-child(1) { border: 2px solid #FF4B4B !important; }
+        div[data-baseweb="tab-list"] button:nth-child(1) p { color: #FF4B4B !important; font-size: 1.1rem !important; }
+        
+        /* Tab 2: Compare (Blue) */
+        div[data-baseweb="tab-list"] button:nth-child(2) { border: 2px solid #636EFA !important; }
+        div[data-baseweb="tab-list"] button:nth-child(2) p { color: #636EFA !important; }
+        
+        .stTabs [data-baseweb="tab"] p { font-weight: 600; }
+    </style>
+    """, unsafe_allow_html=True)
 
-    /* --- TAB 1: Analyze (Red Theme) --- */
-    div[data-baseweb="tab-list"] button:nth-child(1) {
-        border: 2px solid #FF4B4B !important;
-        background-color: #0E1117 !important;
-    }
-    div[data-baseweb="tab-list"] button:nth-child(1) p {
-        color: #FF4B4B !important; /* Forces text to be Red */
-        font-size: 1.1rem !important;
-    }
-    
-    /* --- TAB 2: Compare (Blue Theme) --- */
-    div[data-baseweb="tab-list"] button:nth-child(2) {
-        border: 2px solid #636EFA !important;
-        background-color: #0E1117 !important;
-    }
-    div[data-baseweb="tab-list"] button:nth-child(2) p {
-        color: #636EFA !important; /* Forces text to be Blue */
-    }
+# --- DATA PROCESSING ---
 
-    /* Fix for inactive tabs text color */
-    .stTabs [data-baseweb="tab"] p {
-        font-weight: 600;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# --- CONSTANTS ---
-DATA_FOLDER = 'data'
-DEFAULT_TOTAL_QUESTIONS = 60
-MARKS_CORRECT = 2.0
-MARKS_INCORRECT = 0.66
-
-# --- HELPER FUNCTIONS ---
-def clean_batch_name(text):
+def normalize_batch_name(text):
     if not isinstance(text, str): return "Unknown"
     match = re.search(r'FRC[\s-]*(\d+)', text, re.IGNORECASE)
     if match: return f"FRC-{match.group(1)}"
@@ -79,17 +62,15 @@ def clean_batch_name(text):
 def extract_test_number(filename):
     match = re.search(r'Test\s*(\d+)', filename, re.IGNORECASE)
     if match: return int(match.group(1))
+    
     match_generic = re.search(r'(\d+)', filename)
-    if match_generic: return int(match_generic.group(1))
-    return 0
+    return int(match_generic.group(1)) if match_generic else 0
 
 def clean_student_name(text):
     if not isinstance(text, str): return ""
-    text = re.sub(r'\d+', '', text)
-    text = text.replace('.', '').replace('\n', ' ')
+    text = re.sub(r'\d+', '', text).replace('.', '').replace('\n', ' ')
     return " ".join(text.split()).upper()
 
-# --- DATA ENGINE ---
 @st.cache_data
 def load_data():
     all_records = []
@@ -109,24 +90,25 @@ def load_data():
                 for page in pdf.pages:
                     table = page.extract_table()
                     if not table: continue
+                    
                     for row in table:
                         clean_row = [str(x).replace('\n', ' ').strip() if x else "" for x in row]
                         if not clean_row or "Name" in clean_row[0] or "Sl No" in clean_row[0]: continue
 
                         try:
-                            # Smart Parsing Logic
+                            # Logic to handle different column structures in PDF
                             if clean_row[0].isdigit():
                                 raw_name = clean_row[1]
                                 raw_batch_roll = clean_row[2]
                                 data_start_idx = 3
-                                batch = clean_batch_name(raw_batch_roll)
+                                batch = normalize_batch_name(raw_batch_roll)
                                 if batch == "Others" and len(clean_row) > 3:
-                                    batch = clean_batch_name(clean_row[3])
+                                    batch = normalize_batch_name(clean_row[3])
                             else:
                                 raw_name = clean_row[0]
                                 raw_batch_roll = clean_row[1]
                                 data_start_idx = 2
-                                batch = clean_batch_name(raw_batch_roll)
+                                batch = normalize_batch_name(raw_batch_roll)
 
                             numerics = []
                             for cell in clean_row[data_start_idx:]:
@@ -168,17 +150,14 @@ def load_data():
         df = df[df['Batch'].isin(valid_batches)]
         df = df.sort_values('Test_Number')
         df = df.drop_duplicates(subset=['Test_ID', 'Name'], keep='first')
-        
-        # Add a helper column: Is_Active_Attempt (1 if Attempts > 0, else 0)
         df['Is_Active_Attempt'] = df['Attempts'].apply(lambda x: 1 if x > 0 else 0)
 
     return df, logs
 
-# --- CHARTS & HELPERS ---
+# --- PLOTTING & ANALYTICS ---
+
 def get_topper_name(full_df):
-    """Returns the name of the student with the highest performance average."""
     if full_df.empty: return None
-    # Filter for active attempts only for finding topper
     active_df = full_df[full_df['Attempts'] > 0]
     avg_scores = active_df.groupby('Name')['Score'].mean().sort_values(ascending=False)
     if not avg_scores.empty:
@@ -238,6 +217,7 @@ def render_predictor(avg_attempts, avg_acc, avg_score):
         target_attempts = st.slider("🎯 Target Attempts", 1, DEFAULT_TOTAL_QUESTIONS, int(avg_attempts), key=f"att_{avg_score}")
     with p_col2:
         target_accuracy = st.slider("🎯 Target Accuracy (%)", 1, 100, int(avg_acc), key=f"acc_{avg_score}")
+    
     pred_correct = target_attempts * (target_accuracy / 100)
     pred_incorrect = target_attempts - pred_correct
     pred_score = (pred_correct * MARKS_CORRECT) - (pred_incorrect * MARKS_INCORRECT)
@@ -247,28 +227,24 @@ def render_predictor(avg_attempts, avg_acc, avg_score):
     pr_c2.metric("Predicted Correct", f"{int(pred_correct)}")
     pr_c3.metric("Predicted Incorrect", f"{int(pred_incorrect)}")
 
-# --- APP ---
+# --- MAIN APP ---
+
+inject_custom_css()
 df, logs = load_data()
 
 # Sidebar
 with st.sidebar:
     st.header("⚙️ Configuration")
-    
-    # --- NEW: REFRESH BUTTON ---
     if st.button("🔄 Refresh Data"):
         st.cache_data.clear()
         st.rerun()
-    # ---------------------------
 
     st.info("Select a specific test in the 'Test Drill-Down' tab to view batch details.")
     with st.expander("System Logs"):
         for log in logs: st.caption(log)
 
-# --- MAIN LAYOUT ---
 st.title("📊 Tapasya SFG Rank Analyzer")
 
-# --- REORDERED TABS HERE ---
-# 1. Analyze (Default), 2. Compare, 3. Dashboard, 4. Drill-Down
 tab_student, tab_compare, tab_dashboard, tab_test_drill = st.tabs([
     "🔍 Analyze my Performance", 
     "⚔️ Compare Students",
@@ -276,7 +252,7 @@ tab_student, tab_compare, tab_dashboard, tab_test_drill = st.tabs([
     "📅 Test Drill-Down"
 ])
 
-# --- TAB 1: Analyse my Performance (MOVED TO 1ST POSITION) ---
+# --- TAB 1: Analyze my Performance ---
 with tab_student:
     if df.empty:
         st.warning("No data.")
@@ -292,11 +268,10 @@ with tab_student:
             default_index = 0
             
         selected_student = st.selectbox("Select Name", all_students, index=default_index)
-        
         stu_df = df[df['Name'] == selected_student].copy()
         
         if not stu_df.empty:
-            # --- 1. Calculate CONSISTENCY RANK (Based on Attempts > 0) ---
+            # 1. CONSISTENCY RANK (Attempts > 0)
             active_attempts_all = df[df['Attempts'] > 0].copy()
             cons_lb = active_attempts_all.groupby('Name')['Score'].mean().reset_index().sort_values('Score', ascending=False)
             cons_lb['Rank'] = range(1, len(cons_lb) + 1)
@@ -306,7 +281,7 @@ with tab_student:
             else:
                 consistency_rank = "N/A (No Attempts)"
 
-            # --- 2. Calculate PERFORMANCE RANK (Based on Total Tests) ---
+            # 2. PERFORMANCE RANK (Total Tests)
             total_tests_conducted = df['Test_ID'].nunique()
             perf_temp = df.groupby('Name')['Score'].sum().reset_index()
             perf_temp['Real_Avg'] = perf_temp['Score'] / total_tests_conducted
@@ -319,8 +294,6 @@ with tab_student:
                 performance_rank = "N/A"
 
             tests_taken_count = stu_df['Is_Active_Attempt'].sum()
-            
-            # Use Active Average for display (Score when present)
             active_avg_display = stu_df[stu_df['Attempts'] > 0]['Score'].mean()
             if pd.isna(active_avg_display): active_avg_display = 0.0
 
@@ -335,26 +308,22 @@ with tab_student:
 
             # Hall of Records
             stu_active = stu_df[stu_df['Attempts'] > 0]
-            
             if not stu_active.empty:
                 st.subheader("🌟 Hall of Records (Extremes)")
                 st.caption("Statistics based on active attempts only.")
 
-                # ROW 1: Rank & Score Extremes
                 r1c1, r1c2, r1c3, r1c4 = st.columns(4)
                 r1c1.metric("🏆 Best Rank", f"#{int(stu_active['Rank'].min())}")
                 r1c2.metric("📉 Worst Rank", f"#{int(stu_active['Rank'].max())}")
                 r1c3.metric("🚀 Highest Score", f"{stu_active['Score'].max()}")
                 r1c4.metric("🐢 Lowest Score", f"{stu_active['Score'].min()}")
                 
-                # ROW 2: Attempts & Corrections
                 r2c1, r2c2, r2c3, r2c4 = st.columns(4)
                 r2c1.metric("📝 Highest Attempts", f"{int(stu_active['Attempts'].max())}")
                 r2c2.metric("💤 Lowest Attempts", f"{int(stu_active['Attempts'].min())}")
                 r2c3.metric("✅ Highest Correct", f"{int(stu_active['Correct'].max())}")
                 r2c4.metric("⚠️ Lowest Correct", f"{int(stu_active['Correct'].min())}")
 
-                # ROW 3: Negatives
                 r3c1, r3c2, r3c3, r3c4 = st.columns(4)
                 r3c1.metric("❌ Highest Incorrect", f"{int(stu_active['Incorrect'].max())}")
                 r3c2.metric("🛡️ Lowest Incorrect", f"{int(stu_active['Incorrect'].min())}")
@@ -366,7 +335,7 @@ with tab_student:
             st.divider()
             render_growth_charts(stu_df, df)
 
-# --- TAB 2: COMPARE (MOVED TO 2ND POSITION) ---
+# --- TAB 2: Compare Students ---
 with tab_compare:
     st.markdown("### ⚔️ Compare Performance")
     if df.empty:
@@ -394,36 +363,32 @@ with tab_compare:
             fig_rank.update_yaxes(autorange="reversed")
             st.plotly_chart(fig_rank, use_container_width=True)
 
-# --- TAB 3: OVERALL DASHBOARD (MOVED TO 3RD POSITION) ---
+# --- TAB 3: Overall Dashboard ---
 with tab_dashboard:
     if df.empty:
         st.warning("No data available.")
     else:
-        # Calculate Aggregates
         total_tests_conducted = df['Test_ID'].nunique()
         active_students = df['Name'].nunique()
         avg_batch_score = df['Score'].mean()
         
-        # --- TOP KPI METRICS ---
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Total Tests Conducted", total_tests_conducted)
         m2.metric("Active Students", active_students)
         m3.metric("Batch Avg Score", f"{avg_batch_score:.2f}")
 
-        # Consistency Champions
+        # Consistency Leaderboard
         active_attempts_df = df[df['Attempts'] > 0].copy()
-        
         consistency_leaderboard = active_attempts_df.groupby(['Name']).agg({
-            'Score': 'mean',          # Average of ACTIVE tests only
+            'Score': 'mean',
             'Accuracy': 'mean',
-            'Is_Active_Attempt': 'count' # Count of ACTIVE tests
+            'Is_Active_Attempt': 'count'
         }).reset_index()
         
         consistency_leaderboard = consistency_leaderboard.rename(columns={'Is_Active_Attempt': 'Tests Taken', 'Score': 'Avg Score'})
         consistency_leaderboard = consistency_leaderboard.sort_values('Avg Score', ascending=False)
         consistency_leaderboard['Rank'] = range(1, len(consistency_leaderboard) + 1)
         
-        # Metric for Top Performer
         if not consistency_leaderboard.empty:
             m4.metric("Top Consistency Avg", f"{consistency_leaderboard['Avg Score'].iloc[0]:.2f}")
         
@@ -441,7 +406,6 @@ with tab_dashboard:
 
         st.divider()
 
-        # Absolute Rank
         st.subheader("🎯 Absolute Rank (Factoring in Tests Missed)")
         st.caption(f"This ranking calculates average based on **ALL {total_tests_conducted} TESTS** conducted so far. Missing a test counts as 0 (measures absolute performance).")
 
@@ -464,7 +428,7 @@ with tab_dashboard:
             use_container_width=True, hide_index=True
         )
 
-# --- TAB 4: TEST DRILL-DOWN (REMAINED LAST) ---
+# --- TAB 4: Test Drill-Down ---
 with tab_test_drill:
     if df.empty:
         st.warning("No data.")
