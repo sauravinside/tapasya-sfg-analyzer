@@ -5,12 +5,15 @@ import streamlit as st
 import pdfplumber
 import plotly.express as px
 import plotly.graph_objects as go
+from datetime import datetime, time, timedelta
+import pytz
 
 # --- CONFIGURATION ---
 DATA_FOLDER = 'data'
 DEFAULT_TOTAL_QUESTIONS = 60
 MARKS_CORRECT = 2.0
 MARKS_INCORRECT = 0.66
+IST = pytz.timezone('Asia/Kolkata') # Set Timezone to India
 
 st.set_page_config(
     page_title="Tapasya SFG Rank Analyzer", 
@@ -46,6 +49,34 @@ def inject_custom_css():
         .stTabs [data-baseweb="tab"] p { font-weight: 600; }
     </style>
     """, unsafe_allow_html=True)
+
+# --- AUTOMATIC REFRESH LOGIC ---
+def check_refresh_schedule():
+    """
+    Checks if the data needs to be refreshed based on the 7 PM IST schedule.
+    """
+    now_ist = datetime.now(IST)
+    today_7pm = now_ist.replace(hour=19, minute=32, second=0, microsecond=0)
+    
+    # Determine the "Last Scheduled Update" time
+    if now_ist >= today_7pm:
+        # If it's past 7 PM today, the data should be from Today 7 PM or later
+        last_cutoff = today_7pm
+    else:
+        # If it's before 7 PM, the data should be from Yesterday 7 PM or later
+        last_cutoff = today_7pm - timedelta(days=1)
+
+    # Initialize session state for last update if not present
+    if 'last_update_ts' not in st.session_state:
+        st.session_state['last_update_ts'] = datetime.min.replace(tzinfo=IST)
+
+    # CHECK: Is our current data OLDER than the cutoff?
+    if st.session_state['last_update_ts'] < last_cutoff:
+        st.cache_data.clear() # Clear the cache
+        st.session_state['last_update_ts'] = now_ist # Mark as updated
+        st.rerun() # Reload the app
+
+    return last_cutoff
 
 # --- DATA PROCESSING ---
 
@@ -261,13 +292,28 @@ def render_predictor(avg_attempts, avg_acc, avg_score):
 # --- MAIN APP ---
 
 inject_custom_css()
+last_cutoff_time = check_refresh_schedule() # Run Schedule Check
 df, logs = load_data()
 
 # Sidebar
 with st.sidebar:
     st.header("⚙️ Configuration")
-    if st.button("🔄 Refresh Data"):
+    
+    # --- AUTO REFRESH MESSAGE ---
+    now_ist = datetime.now(IST)
+    if now_ist.time() >= time(19, 32):
+        # It is post 7 PM
+        st.success(f"✅ Data is up to date.\n(Auto-refreshed at 7:00 PM)")
+    else:
+        # It is before 7 PM
+        st.info(f"⏳ Next Auto-Refresh: Today at 7:00 PM.\n(Showing data from yesterday's cycle)")
+    
+    st.caption("ℹ️ **Note:** New data automatically reflects after 7 PM daily. If you are visiting early (before 7 PM), kindly hit the Manual Refresh button below.")
+    # ----------------------------
+
+    if st.button("🔄 Manual Refresh Data"):
         st.cache_data.clear()
+        st.session_state['last_update_ts'] = datetime.now(IST)
         st.rerun()
 
     st.info("Select a specific test in the 'Test Drill-Down' tab to view batch details.")
